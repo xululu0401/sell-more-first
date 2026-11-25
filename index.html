@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>降价先算多卖几件</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif; background: #f6f3ec; color: #24221e; line-height: 1.6; }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 20px 14px 40px; }
+  h1 { font-size: 26px; letter-spacing: 1px; }
+  .lead { color: #5f5a50; font-size: 14px; margin: 4px 0 14px; }
+  .card { background: #fff; border-radius: 10px; padding: 14px; border: 1px solid #ded8cb; margin-bottom: 14px; min-width: 0; }
+  .card h2 { font-size: 15px; font-weight: 600; margin-bottom: 8px; overflow-wrap: anywhere; }
+  label { font-size: 12px; color: #5f5a50; display: block; overflow-wrap: anywhere; }
+  input { font: inherit; font-size: 14px; padding: 6px 8px; border: 1px solid #c6bfb0; border-radius: 6px; width: 100%; min-width: 0; background: #fff; font-variant-numeric: tabular-nums; }
+  .cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .col { border: 1px solid #e6e0d3; border-radius: 8px; padding: 10px; min-width: 0; }
+  .col h3 { font-size: 13px; margin-bottom: 6px; color: #6b5a2e; }
+  .col.new h3 { color: #8a3b12; }
+  .g { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 10px; }
+  .g > div { min-width: 0; } .g .full { grid-column: 1 / -1; }
+  .bad { border-color: #b23a2e !important; background: #fff0ec !important; }
+  button { font: inherit; font-size: 13px; padding: 6px 11px; border-radius: 6px; border: 1px solid #8a3b12; background: #8a3b12; color: #fff; cursor: pointer; }
+  button.ghost { background: #fff; color: #8a3b12; }
+  .presets, .dl { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
+  .err { display: none; background: #fff0ec; border: 1px solid #ecb7aa; color: #8e2b1c; border-radius: 8px; padding: 10px 12px; margin-bottom: 14px; overflow-wrap: anywhere; }
+  .muted { color: #7d776b; font-size: 12px; }
+  /* 结论 */
+  .verdict { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .stamp { display: inline-block; border: 3px solid #b8661a; color: #b8661a; border-radius: 6px; padding: 0 10px; font-weight: 800; font-size: 20px; white-space: nowrap; transform: rotate(-3deg); }
+  .stamp.gain, .stamp.even { border-color: #2f7d4a; color: #2f7d4a; } .stamp.cap, .stamp.each { border-color: #b23a2e; color: #b23a2e; }
+  #big { font-size: 15px; overflow-wrap: anywhere; } #big b { font-size: 28px; font-variant-numeric: tabular-nums; }
+  #sumTxt { font-size: 15px; margin-top: 8px; overflow-wrap: anywhere; }
+  #facts { margin: 8px 0 0 18px; font-size: 13px; color: #4a453c; } #facts li { margin: 3px 0; overflow-wrap: anywhere; }
+  /* 对照表 */
+  .vs { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 14px; }
+  .vs th, .vs td { padding: 6px 8px; border-bottom: 1px solid #eee8dc; text-align: right; }
+  .vs th:first-child, .vs td:first-child { text-align: left; color: #5f5a50; overflow-wrap: anywhere; }
+  .vs td:not(:first-child) { white-space: nowrap; } .vs td:first-child { min-width: 5.5em; } .vs thead th { font-size: 12px; color: #5f5a50; font-weight: 600; }
+  .vs tr.tot td { font-weight: 700; border-top: 2px solid #24221e; }
+  .neg { color: #b23a2e; } .pos { color: #2f7d4a; }
+  /* 拆账条 */
+  #bridge { display: block; width: 100%; height: 220px; margin-top: 8px; }
+  /* 价位梯 */
+  .ladder { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+  .ladder td, .ladder th { padding: 5px 6px; border-bottom: 1px solid #eee8dc; text-align: right; white-space: nowrap; }
+  .ladder td:first-child, .ladder th:first-child { text-align: left; }
+  .ladder th { font-size: 12px; color: #5f5a50; font-weight: 600; }
+  .ladder tr.mine td { background: #fff2df; font-weight: 700; }
+  .ladder tr.over td:nth-child(4) { color: #b23a2e; }
+  .scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  #sugs { display: grid; gap: 8px; }
+  .sug { display: flex; gap: 10px; align-items: center; justify-content: space-between; border: 1px solid #ded8cb; border-radius: 6px; padding: 8px 10px; }
+  .sug span { min-width: 0; overflow-wrap: anywhere; font-size: 14px; } .sug button { flex: none; }
+  .how { font-size: 13px; } .how p { margin: 6px 0; }
+  @media (max-width: 640px) { .cols { grid-template-columns: minmax(0, 1fr); } }
+  @media (max-width: 520px) { .sug { flex-direction: column; align-items: stretch; } #big b { font-size: 24px; } .vs { font-size: 13px; } .vs th, .vs td { padding: 5px 4px; } .ladder { font-size: 12px; } .ladder td, .ladder th { padding: 4px 3px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>降价先算多卖几件</h1>
+  <p class="lead">想降价冲销量，先算一笔：降这么多，要多卖几件才不比现在少赚；你估计能多卖的那些，够不够补上老顾客也按新价买少掉的钱。默认数据是虚构的。</p>
+
+  <div class="card">
+    <div class="cols">
+      <div class="col">
+        <h3>现在</h3>
+        <div class="g">
+          <div><label for="price">售价（元/件）</label><input id="price" inputmode="decimal" maxlength="12"></div>
+          <div><label for="qty">每月卖几件</label><input id="qty" inputmode="numeric" maxlength="10"></div>
+          <div><label for="cost">每件成本（元，进货+包装+运费）</label><input id="cost" inputmode="decimal" maxlength="12"></div>
+          <div><label for="fee">平台扣点（%，没有填 0）</label><input id="fee" inputmode="decimal" maxlength="5"></div>
+        </div>
+      </div>
+      <div class="col new">
+        <h3>打算改成</h3>
+        <div class="g">
+          <div><label for="newPrice">新售价（元/件）</label><input id="newPrice" inputmode="decimal" maxlength="12"></div>
+          <div><label for="expQty">估计每月卖几件</label><input id="expQty" inputmode="numeric" maxlength="10"></div>
+          <div><label for="extra">这次额外花的钱（元/月，投流海报等）</label><input id="extra" inputmode="decimal" maxlength="12"></div>
+          <div><label for="cap">每月最多能出几件（可不填）</label><input id="cap" inputmode="numeric" maxlength="10"></div>
+          <div class="full"><label for="name">备注（可不填）</label><input id="name" maxlength="30"></div>
+        </div>
+      </div>
+    </div>
+    <div class="presets" id="presets"><button id="reset" class="ghost">恢复默认</button></div>
+  </div>
+
+  <div class="err" id="error"></div>
+
+  <div id="out">
+    <div class="card">
+      <div class="verdict"><span class="stamp" id="stamp"></span><span id="big"></span></div>
+      <div id="sumTxt"></div>
+      <ul id="facts"></ul>
+    </div>
+
+    <div class="card" id="sugCard">
+      <h2>改一样试试（点一下代回重算）</h2>
+      <div id="sugs"></div>
+    </div>
+
+    <div class="card">
+      <h2>现在 vs 改价后（每月）</h2>
+      <div class="scroll"><table class="vs" id="vs"></table></div>
+      <canvas id="bridge"></canvas>
+      <p class="muted">条形图把利润差拆成三块：原来那些件按新价少赚（或多赚）的、多卖（或少卖）的件带来的、额外花的钱。三块加起来就是利润差。</p>
+    </div>
+
+    <div class="card">
+      <h2>每降一档，要卖到几件才不比现在少赚</h2>
+      <div class="scroll"><table class="ladder" id="ladder"></table></div>
+      <p class="muted">按现在的售价往下每档降 5%（价四舍五入到分）；你打算的价也放在里面。每件剩不到 0 的价位怎么卖都不可能。</p>
+    </div>
+
+    <div class="card">
+      <h2>带走</h2>
+      <div class="dl">
+        <button id="dlPNG">结果卡 PNG</button><button id="dlCSV" class="ghost">CSV</button><button id="dlMD" class="ghost">Markdown</button><button id="dlJSON" class="ghost">JSON 备份</button>
+      </div>
+      <p class="muted" style="margin-top:6px">填的内容自动存在这台设备的浏览器里，不上传。</p>
+    </div>
+  </div>
+
+  <div class="card how">
+    <h2>怎么算的</h2>
+    <p>每件剩 = 售价 ×（1 − 扣点）− 每件成本。每月利润 = 件数 × 每件剩 − 额外花的钱。房租、工资这类不随件数变的开支，改不改价都一样，比较时互相抵掉，所以不用填。</p>
+    <p>保本件数是让改价后的利润不低于现在的最少整件数。利润差可以拆成三块：原来卖的那些件，现在每件少剩（或多剩）的钱；多卖（或少卖）的件按新价每件剩的钱；再减额外花的钱。降价时第一块是负的，而且是对所有老顾客都少收，所以每件剩得越薄，降一点价要多卖的比例越大。</p>
+    <p>边界：件数是你自己的估计，不是任何平台或行业的数据；没算降价对品牌、复购、连带别的商品的影响，也没算同行跟着降价；成本按每件固定，没算进货量大了单价变低。金额精确到分。</p>
+  </div>
+</div>
+
+  <script>
+/* 降价先算多卖几件 · 计算核心
+ * 场景：开网店、开小店，想降价冲一冲销量。降一成，到底要多卖多少件才不比现在少赚？
+ *       估计能多卖的那些件，够不够补上「老顾客也按新价买」少赚的钱？
+ * 模型（设计选择，不是任何平台或行业数据）：
+ *   · 每件到手 = 售价 ×（1 − 扣点）；每件剩 m = 每件到手 − 每件成本（进货 + 包装 + 运费等，跟着件数走的钱）。
+ *   · 现在每月利润 Π0 = Q0 × m0；降价后 Π1 = Q1 × m1 − F（F：这次降价额外花的钱，比如投流、海报）。
+ *     这里的「利润」只算跟这次降价有关的部分，房租工资这类不随件数变的开支两边一样，相减抵掉，不用填。
+ *   · 保本件数 Q* = 满足 Q × m1 − F ≥ Π0 的最小整数件数；m1 ≤ 0 时不存在（卖一件亏一件）。
+ *   · 利润差拆三块（恒等式）：Π1 − Π0 = Q0 ×（m1 − m0）【原来那些件按新价少赚】+（Q1 − Q0）× m1【多卖的件赚的】− F。
+ * 全部金额用「分」的整数、每件剩用「千分之一分」的整数（扣点精确到 0.1%），乘积用 BigInt，没有浮点误差。 */
+(function (root) {
+  'use strict';
+  function Bad(message, field) { const e = new Error(message); e.field = field; return e; }
+  const KEYS = ['name', 'price', 'cost', 'fee', 'qty', 'newPrice', 'expQty', 'extra', 'cap'];
+  const MAX_NAME = 30, MAX_PRICE = 100000, MAX_QTY = 1000000, MAX_EXTRA = 10000000;
+  const LEVELS = [5, 10, 15, 20, 25, 30];
+  const STAMP = { gain: '多赚', even: '打平', less: '少赚', cap: '卖不到保本量', each: '卖一件亏一件' };
+
+  const clean = (v) => String(v == null ? '' : v).replace(/[\s,，]/g, '');
+  function parseMoney(v, label, field, minC, maxY) {
+    const t = clean(v).replace(/元$/, '');
+    if (t === '') throw Bad(label + '没填', field);
+    if (!/^\d+(\.\d{1,2})?$/.test(t)) throw Bad(label + '写金额（元），最多 2 位小数，比如 79.9', field);
+    const [i, d = ''] = t.split('.');
+    if (i.length > 9) throw Bad(label + '最多 ' + fmtInt(maxY) + ' 元', field);
+    const c = (+i) * 100 + +((d + '00').slice(0, 2));
+    if (c < minC) throw Bad(label + (minC > 0 ? '要大于 0' : '不能是负数'), field);
+    if (c > maxY * 100) throw Bad(label + '最多 ' + fmtInt(maxY) + ' 元', field);
+    return c;
+  }
+  function parseQty(v, label, field, min, optional) {
+    const t = clean(v).replace(/件$/, '');
+    if (t === '') { if (optional) return null; throw Bad(label + '没填', field); }
+    if (!/^\d+$/.test(t)) throw Bad(label + '写整数件数', field);
+    if (t.length > 8 || +t > MAX_QTY) throw Bad(label + '最多 ' + fmtInt(MAX_QTY) + ' 件', field);
+    const n = +t;
+    if (n < min) throw Bad(label + '至少 ' + min + ' 件', field);
+    return n;
+  }
+  function parseFee(v) {
+    const t = clean(v).replace(/[%％]$/, '');
+    if (t === '') throw Bad('平台扣点没填（没有就填 0）', 'fee');
+    if (!/^\d+(\.\d)?$/.test(t)) throw Bad('平台扣点写百分数，最多 1 位小数，比如 5 或 2.5', 'fee');
+    const [i, d = '0'] = t.split('.');
+    const fm = (+i) * 10 + (+d);
+    if (fm > 500) throw Bad('平台扣点在 0 到 50% 之间', 'fee');
+    return fm;
+  }
+  function parse(inp) {
+    const name = String(inp.name == null ? '' : inp.name).trim();
+    if (name.length > MAX_NAME) throw Bad('备注最多 ' + MAX_NAME + ' 个字', 'name');
+    const P0 = parseMoney(inp.price, '现在的售价', 'price', 1, MAX_PRICE);
+    const v = parseMoney(inp.cost, '每件成本', 'cost', 0, MAX_PRICE);
+    const fm = parseFee(inp.fee);
+    const Q0 = parseQty(inp.qty, '现在每月卖几件', 'qty', 1);
+    const P1 = parseMoney(inp.newPrice, '打算卖的价', 'newPrice', 1, MAX_PRICE);
+    const Q1 = parseQty(inp.expQty, '估计改价后每月卖几件', 'expQty', 0);
+    const F = parseMoney(inp.extra, '这次额外花的钱', 'extra', 0, MAX_EXTRA);
+    const cap = parseQty(inp.cap, '每月最多能出几件', 'cap', 1, true);
+    if (unit(P0, v, fm) <= 0n) throw Bad('现在的售价扣掉扣点后已经不够每件成本，每件都在亏，这里没法算「降价要多卖几件」', 'cost');
+    if (cap != null && cap < Q0) throw Bad('每月最多能出 ' + fmtInt(cap) + ' 件，比现在卖的 ' + fmtInt(Q0) + ' 件还少，先检查一下', 'cap');
+    if (cap != null && Q1 > cap) throw Bad('估计卖 ' + fmtInt(Q1) + ' 件，超过了每月最多能出的 ' + fmtInt(cap) + ' 件', 'expQty');
+    return { name, P0, v, fm, Q0, P1, Q1, F, cap };
+  }
+
+  /* ── 精确算术 ── */
+  /* 每件剩，单位：千分之一分 */
+  function unit(Pc, vc, fm) { return BigInt(Pc) * BigInt(1000 - fm) - BigInt(vc) * 1000n; }
+  function ceilDiv(a, b) { let q = a / b; if (a % b !== 0n && a > 0n) q += 1n; return q; }
+  /* 千分之一分 → 分，四舍五入（远离 0） */
+  function toCents(x) { const neg = x < 0n, a = neg ? -x : x; const r = (a + 500n) / 1000n; return Number(neg ? -r : r); }
+  function profit(Q, m, Fc) { return BigInt(Q) * m - BigInt(Fc) * 1000n; }
+  /* 保本件数：最小整数 Q ≥ 0，使 Q·m1 − F ≥ Π0；m1 ≤ 0 返回 null */
+  function breakEven(pi0, m1, Fc) {
+    if (m1 <= 0n) return null;
+    const need = pi0 + BigInt(Fc) * 1000n;
+    if (need <= 0n) return 0;
+    return Number(ceilDiv(need, m1));
+  }
+  /* 按估计件数 Q1 不比现在少赚的最低价（分）；Q1 = 0 时没有 */
+  function minPrice(D, pi0) {
+    if (D.Q1 <= 0) return null;
+    const need = pi0 + BigInt(D.F) * 1000n;
+    const mreq = ceilDiv(need, BigInt(D.Q1));
+    let Pc = ceilDiv(mreq + BigInt(D.v) * 1000n, BigInt(1000 - D.fm));
+    if (Pc < 1n) Pc = 1n;
+    let P = Number(Pc);
+    const okAt = (p) => profit(D.Q1, unit(p, D.v, D.fm), D.F) >= pi0;
+    while (!okAt(P)) P++;
+    while (P > 1 && okAt(P - 1)) P--;
+    return P;
+  }
+
+  /* ── 格式 ── */
+  function fmtInt(n) { const s = String(Math.abs(Math.round(n))); return (n < 0 ? '−' : '') + s.replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+  /* 金额（分）→ 元：整元不带小数，否则 2 位；负号用 − */
+  function yuan(c) {
+    const a = Math.abs(c), i = Math.floor(a / 100), f = a % 100;
+    return (c < 0 ? '−' : '') + fmtInt(i) + (f ? '.' + String(f).padStart(2, '0') : '');
+  }
+  /* 千分之一分 → 元（先四舍五入到分） */
+  const yuanM = (x) => yuan(toCents(x));
+  function pct1(x) { const r = Math.round(Math.abs(x) * 1000) / 10; return (x < 0 && r > 0 ? '−' : '') + r.toFixed(1) + '%'; }
+  const feeTxt = (fm) => (fm % 10 ? (fm / 10).toFixed(1) : String(fm / 10)) + '%';
+
+  function row(D, pi0, Pc, label) {
+    const m = unit(Pc, D.v, D.fm), qs = breakEven(pi0, m, D.F);
+    return { label, price: Pc, cut: (D.P0 - Pc) / D.P0, m, qs, lift: qs == null ? null : qs / D.Q0 - 1,
+      over: qs != null && D.cap != null && qs > D.cap, mine: Pc === D.P1 };
+  }
+
+  function calculate(inp) {
+    const D = parse(inp);
+    const m0 = unit(D.P0, D.v, D.fm), m1 = unit(D.P1, D.v, D.fm);
+    const pi0 = profit(D.Q0, m0, 0), pi1 = profit(D.Q1, m1, D.F);
+    const qs = breakEven(pi0, m1, D.F), qsNoF = breakEven(pi0, m1, 0);
+    const p0 = toCents(pi0), p1 = toCents(pi1), dP = p1 - p0;
+    const priceEff = toCents(BigInt(D.Q0) * (m1 - m0));
+    const volEff = dP + D.F - priceEff;            /* 显示口径：三块加起来正好等于显示的利润差 */
+    const volExact = BigInt(D.Q1 - D.Q0) * m1;     /* 精确口径，用于测试 |显示 − 精确| ≤ 1 分 */
+    let verdict;
+    if (m1 <= 0n) verdict = 'each';
+    else if (D.cap != null && qs > D.cap) verdict = 'cap';
+    else if (pi1 > pi0) verdict = 'gain';
+    else if (pi1 === pi0) verdict = 'even';
+    else verdict = 'less';
+    const table = LEVELS.map((d) => row(D, pi0, Math.floor((D.P0 * (100 - d) + 50) / 100), '降 ' + d + '%'));
+    if (!table.some((r) => r.mine)) {
+      const c = Math.round((D.P0 - D.P1) / D.P0 * 1000) / 10;
+      const mine = row(D, pi0, D.P1, (c >= 0 ? '降 ' : '涨 ') + Math.abs(c).toFixed(1) + '%');
+      table.push(mine);
+      table.sort((a, b) => b.price - a.price);
+    }
+    const R = { D, m0, m1, pi0, pi1, p0, p1, dP, qs, qsNoF, priceEff, volEff, volExact, verdict, stamp: STAMP[verdict],
+      cut: (D.P0 - D.P1) / D.P0, keep: Number(m1) / Number(m0), table, pmin: minPrice(D, pi0),
+      pPos: Number(BigInt(D.v) * 1000n / BigInt(1000 - D.fm)) + 1 };
+    R.summary = summaryOf(R);
+    R.facts = factsOf(R);
+    return R;
+  }
+
+  function moveTxt(D) {
+    if (D.P1 < D.P0) return '从 ' + yuan(D.P0) + ' 元降到 ' + yuan(D.P1) + ' 元';
+    if (D.P1 > D.P0) return '从 ' + yuan(D.P0) + ' 元涨到 ' + yuan(D.P1) + ' 元';
+    return '价不变（' + yuan(D.P0) + ' 元）';
+  }
+  function deltaTxt(dP) { return dP > 0 ? '多赚 ' + yuan(dP) + ' 元' : dP < 0 ? '少赚 ' + yuan(-dP) + ' 元' : '赚得一样多'; }
+  function needTxt(R) {
+    const D = R.D;
+    if (R.qs > D.Q0) return '要卖到 ' + fmtInt(R.qs) + ' 件（比现在多 ' + pct1(R.qs / D.Q0 - 1) + '）才不比现在少赚';
+    if (R.qs === D.Q0) return '卖得和现在一样多（' + fmtInt(R.qs) + ' 件）就不比现在少赚';
+    return '只要卖到 ' + fmtInt(R.qs) + ' 件（比现在少卖 ' + fmtInt(D.Q0 - R.qs) + ' 件以内）就不比现在少赚';
+  }
+  function summaryOf(R) {
+    const D = R.D;
+    if (R.verdict === 'each') {
+      return moveTxt(D) + '，扣掉 ' + feeTxt(D.fm) + ' 扣点每件到手 ' + yuanM(BigInt(D.P1) * BigInt(1000 - D.fm)) + ' 元，不够 ' + yuan(D.v) + ' 元的成本：卖一件亏 ' + yuanM(-R.m1) + ' 元，卖得越多亏得越多。';
+    }
+    const head = moveTxt(D) + '，估计每月卖 ' + fmtInt(D.Q1) + ' 件，比现在' + deltaTxt(R.dP) + '。';
+    if (R.verdict === 'cap') return head + '要卖到 ' + fmtInt(R.qs) + ' 件才不比现在少赚，可每月最多只能出 ' + fmtInt(D.cap) + ' 件。';
+    return head + needTxt(R) + '。';
+  }
+  function factsOf(R) {
+    const D = R.D, f = [];
+    if (R.verdict === 'each') {
+      f.push('现在每件剩 ' + yuanM(R.m0) + ' 元，每月赚 ' + yuan(R.p0) + ' 元；改价后每件亏 ' + yuanM(-R.m1) + ' 元，卖 ' + fmtInt(D.Q1) + ' 件每月' + (R.p1 >= 0 ? '赚 ' + yuan(R.p1) : '亏 ' + yuan(-R.p1)) + ' 元。');
+      f.push('要每件不亏，扣点 ' + feeTxt(D.fm) + ' 时价至少要 ' + yuan(R.pPos) + ' 元（到手才比 ' + yuan(D.v) + ' 元的成本多）。');
+      return f;
+    }
+    f.push('现在每件扣完扣点和成本剩 ' + yuanM(R.m0) + ' 元，改到 ' + yuan(D.P1) + ' 元后剩 ' + yuanM(R.m1) + ' 元，是原来的 ' + pct1(R.keep) + '。');
+    if (D.P1 < D.P0) {
+      let t = '价降了 ' + pct1(R.cut) + '，光是补上每件少赚的，就要卖到 ' + fmtInt(R.qsNoF) + ' 件（多 ' + pct1(R.qsNoF / D.Q0 - 1) + '）';
+      if (D.F > 0) t += '；再算上额外花的 ' + yuan(D.F) + ' 元，要 ' + fmtInt(R.qs) + ' 件（多 ' + pct1(R.qs / D.Q0 - 1) + '）';
+      f.push(t + '。要多卖的比例比降价的比例大，因为降掉的钱全从每件剩的那一点里扣。');
+    } else if (D.F > 0) {
+      f.push('额外花的 ' + yuan(D.F) + ' 元，按改价后每件剩 ' + yuanM(R.m1) + ' 元算，要多卖 ' + fmtInt(R.qs - (R.qsNoF || 0)) + ' 件才挣得回来。');
+    }
+    const sgn = (c) => (c < 0 ? '少赚 ' + yuan(-c) : '多赚 ' + yuan(c)) + ' 元';
+    f.push('利润差 ' + (R.dP < 0 ? '−' : R.dP > 0 ? '+' : '') + yuan(Math.abs(R.dP)) + ' 元 = 原来那 ' + fmtInt(D.Q0) + ' 件按新价' + sgn(R.priceEff) + '，' +
+      (D.Q1 >= D.Q0 ? '多卖的 ' + fmtInt(D.Q1 - D.Q0) + ' 件' : '少卖的 ' + fmtInt(D.Q0 - D.Q1) + ' 件') + sgn(R.volEff) + (D.F > 0 ? '，再减额外花的 ' + yuan(D.F) + ' 元' : '') + '。');
+    if (D.cap != null) {
+      f.push('每月最多能出 ' + fmtInt(D.cap) + ' 件，保本要 ' + fmtInt(R.qs) + ' 件，' + (R.qs > D.cap ? '超出上限 ' + fmtInt(R.qs - D.cap) + ' 件：这个价怎么卖都补不回来。' : '在上限内（还差 ' + fmtInt(D.cap - R.qs) + ' 件到顶）。'));
+    }
+    if (R.verdict !== 'cap') {
+      const gap = D.Q1 - R.qs;
+      f.push('估的 ' + fmtInt(D.Q1) + ' 件' + (gap >= 0 ? '比保本件数多 ' + fmtInt(gap) + ' 件' : '比保本件数少 ' + fmtInt(-gap) + ' 件') + '；估计差这么多件，结论就会翻过来，所以这个估计值得多想一想。');
+    }
+    return f;
+  }
+
+  function sameInput(inp) { const o = {}; KEYS.forEach((k) => { o[k] = String(inp[k] == null ? '' : inp[k]); }); return o; }
+  const cents2 = (c) => (c % 100 ? (c / 100).toFixed(2) : String(c / 100));
+  function suggestions(inp, R) {
+    const D = R.D, out = [];
+    const tryApply = (id, text, patch) => {
+      const apply = Object.assign(sameInput(inp), patch);
+      try { const R2 = calculate(apply); out.push({ id, text, apply, R2 }); } catch (e) { /* 代回后不合法就不给这条 */ }
+    };
+    if (R.pmin != null && R.pmin !== D.P1 && R.pmin <= MAX_PRICE * 100) {
+      const lower = R.pmin < D.P1;
+      tryApply('price', '要是真能卖到 ' + fmtInt(D.Q1) + ' 件，价最低' + (R.pmin < D.P0 ? '降到 ' : '定在 ') + yuan(R.pmin) + ' 元就不比现在少赚（比打算的 ' + yuan(D.P1) + ' 元' + (lower ? '还能低 ' : '要高 ') + yuan(Math.abs(D.P1 - R.pmin)) + ' 元）', { newPrice: cents2(R.pmin) });
+    }
+    if (R.qs != null && R.qs !== D.Q1 && R.qs <= (D.cap != null ? D.cap : MAX_QTY)) {
+      tryApply('qty', '定 ' + yuan(D.P1) + ' 元的话，要卖到 ' + fmtInt(R.qs) + ' 件才不比现在少赚（比估的' + (R.qs > D.Q1 ? '多 ' : '少 ') + fmtInt(Math.abs(R.qs - D.Q1)) + ' 件），代回看看', { expQty: String(R.qs) });
+    }
+    if (D.F > 0) {
+      const p1 = toCents(profit(D.Q1, R.m1, 0)) - R.p0;
+      tryApply('extra', '不花这 ' + yuan(D.F) + ' 元也能卖 ' + fmtInt(D.Q1) + ' 件的话，比现在' + deltaTxt(p1), { extra: '0' });
+    }
+    return out;
+  }
+
+  function csvCell(v) { const s = String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
+  function tableCells(r, D) {
+    return [r.label + (r.mine ? '（你打算）' : ''), yuan(r.price), r.m > 0n ? yuanM(r.m) : '亏 ' + yuanM(-r.m),
+      r.qs == null ? '不可能' : fmtInt(r.qs) + (r.over ? '（超上限）' : ''), r.qs == null ? '—' : (r.lift >= 0 ? '+' : '') + pct1(r.lift)];
+  }
+  function toCSV(R, when) {
+    const D = R.D, L = [];
+    L.push(['降价先算多卖几件', '导出 ' + when, '默认数据为虚构示例'].map(csvCell).join(','));
+    L.push(['备注', D.name].map(csvCell).join(','));
+    L.push(['现在售价(元)', cents2(D.P0)].join(','));
+    L.push(['每件成本(元)', cents2(D.v)].join(','));
+    L.push(['平台扣点(%)', D.fm / 10].join(','));
+    L.push(['现在每月件数', D.Q0].join(','));
+    L.push(['打算的价(元)', cents2(D.P1)].join(','));
+    L.push(['估计每月件数', D.Q1].join(','));
+    L.push(['额外花费(元)', cents2(D.F)].join(','));
+    L.push(['每月最多件数', D.cap == null ? '不限' : D.cap].join(','));
+    L.push(['结论', R.stamp].map(csvCell).join(','));
+    L.push(['说明', R.summary].map(csvCell).join(','));
+    L.push(['现在每月利润(元)', cents2(R.p0)].join(','));
+    L.push(['改价后每月利润(元)', cents2(R.p1)].join(','));
+    L.push(['利润差(元)', cents2(R.dP)].join(','));
+    L.push(['原来那些件按新价(元)', cents2(R.priceEff)].join(','));
+    L.push(['多卖或少卖的件(元)', cents2(R.volEff)].join(','));
+    L.push(['额外花费(元)', cents2(-D.F)].join(','));
+    L.push(['保本件数', R.qs == null ? '不可能' : R.qs].join(','));
+    L.push('');
+    L.push(['价位', '价(元)', '每件剩(元)', '保本件数', '比现在多卖'].join(','));
+    R.table.forEach((r) => L.push(tableCells(r, D).map(csvCell).join(',')));
+    return L.join('\n') + '\n';
+  }
+  function toMD(R, when, sg) {
+    const D = R.D, L = [];
+    L.push('# 降价先算多卖几件' + (D.name ? ' · ' + D.name : ''), '');
+    L.push('生成时间：' + when + '　默认数据为虚构示例。', '');
+    L.push('**' + R.stamp + '**：' + R.summary, '');
+    R.facts.forEach((x) => L.push('- ' + x));
+    L.push('', '| 价位 | 价（元） | 每件剩（元） | 保本件数 | 比现在多卖 |', '|---|---:|---:|---:|---:|');
+    R.table.forEach((r) => L.push('| ' + tableCells(r, D).join(' | ') + ' |'));
+    if (sg && sg.length) { L.push('', '## 改一样试试', ''); sg.forEach((s) => L.push('- ' + s.text)); }
+    L.push('', '口径：每件剩 = 售价 ×（1 − 扣点）− 每件成本；不随件数变的开支（房租、工资）两边一样，没算进来。件数是你自己的估计，没算降价对品牌、复购和别的商品的影响。');
+    return L.join('\n') + '\n';
+  }
+
+  const DEFAULT = { name: '网店保温杯（虚构）', price: '89', cost: '52', fee: '5', qty: '600', newPrice: '79', expQty: '800', extra: '1500', cap: '1000' };
+  const PRESETS = [
+    ['网店降价冲量', DEFAULT],
+    ['理发店涨价', { name: '小区理发店（虚构）', price: '38', cost: '12', fee: '0', qty: '900', newPrice: '45', expQty: '820', extra: '0', cap: '' }],
+    ['清库存跳水价', { name: '换季清库存（虚构）', price: '45', cost: '26', fee: '15', qty: '200', newPrice: '30', expQty: '600', extra: '0', cap: '' }],
+    ['民宿降价', { name: '一间民宿（虚构）', price: '320', cost: '90', fee: '10', qty: '18', newPrice: '220', expQty: '28', extra: '0', cap: '30' }],
+  ];
+
+  const api = { KEYS, LEVELS, STAMP, MAX_QTY, MAX_PRICE, DEFAULT, PRESETS, calculate, suggestions, toCSV, toMD,
+    unit, breakEven, toCents, profit, yuan, yuanM, pct1, fmtInt, feeTxt, cents2, tableCells };
+  if (typeof module === 'object' && module.exports) module.exports = api; else root.AppCore = api;
+})(typeof window !== 'undefined' ? window : globalThis);
+
+  </script>
+  <script>
+/* 降价先算多卖几件 · 界面层 */
+(function () {
+  'use strict';
+  const C = window.AppCore;
+  const KEY = 'sell-more-first:v1';
+  const NAME = '降价先算多卖几件';
+  const copy = (o) => JSON.parse(JSON.stringify(o));
+  const DEFAULT = C.DEFAULT, PRESETS = C.PRESETS, KEYS = C.KEYS;
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const FF = '"PingFang SC","Microsoft YaHei",sans-serif';
+  const { yuan, yuanM, pct1, fmtInt, feeTxt } = C;
+  let state = copy(DEFAULT);
+  let last = null;
+
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* 隐私模式忽略 */ } }
+  function load() {
+    try {
+      const o = JSON.parse(localStorage.getItem(KEY) || 'null');
+      if (!o || typeof o !== 'object' || Array.isArray(o)) return null;
+      const s = {};
+      for (const k of KEYS) { if (o[k] == null || typeof o[k] === 'object') return null; s[k] = String(o[k]).slice(0, 40); }
+      return s;
+    } catch (e) { return null; }
+  }
+  function fill() { KEYS.forEach((k) => { $(k).value = state[k]; }); }
+
+  const signed = (c) => (c > 0 ? '+' : c < 0 ? '−' : '') + yuan(Math.abs(c));
+  function bigText(R) {
+    if (R.verdict === 'each') return '每件亏 <b>' + yuanM(-R.m1) + '</b> 元';
+    return '每月' + (R.dP >= 0 ? '多赚' : '少赚') + ' <b>' + yuan(Math.abs(R.dP)) + '</b> 元';
+  }
+  const plain = (h) => h.replace(/<[^>]+>/g, '');
+  /* 对照表：行 = 项目，列 = 现在 / 改价后 / 差 */
+  function vsRows(R) {
+    const D = R.D, cl = (c) => (c < 0 ? 'neg' : c > 0 ? 'pos' : '');
+    const m0 = C.toCents(R.m0), m1 = C.toCents(R.m1);
+    const rows = [
+      ['售价', yuan(D.P0), yuan(D.P1), signed(D.P1 - D.P0)],
+      ['扣点 ' + feeTxt(D.fm) + ' 后到手', yuanM(BigInt(D.P0) * BigInt(1000 - D.fm)), yuanM(BigInt(D.P1) * BigInt(1000 - D.fm)), ''],
+      ['每件剩', yuanM(R.m0), yuanM(R.m1), signed(m1 - m0)],
+      ['每月件数', fmtInt(D.Q0), fmtInt(D.Q1), (D.Q1 >= D.Q0 ? '+' : '−') + fmtInt(Math.abs(D.Q1 - D.Q0))],
+      ['额外花的钱', '0', D.F ? '−' + yuan(D.F) : '0', D.F ? '−' + yuan(D.F) : ''],
+    ];
+    const head = '<thead><tr><th></th><th>现在</th><th>改价后</th><th>差</th></tr></thead>';
+    const body = rows.map((r) => '<tr><td>' + esc(r[0]) + '</td><td>' + r[1] + '</td><td>' + r[2] + '</td><td>' + r[3] + '</td></tr>').join('');
+    const tot = '<tr class="tot"><td>每月利润</td><td>' + yuan(R.p0) + '</td><td class="' + cl(R.p1) + '">' + yuan(R.p1) + '</td><td class="' + cl(R.dP) + '">' + signed(R.dP) + '</td></tr>';
+    return head + '<tbody>' + body + tot + '</tbody>';
+  }
+  function ladderRows(R) {
+    const D = R.D;
+    const head = '<tr><th>价位</th><th>价</th><th>每件剩</th><th>保本件数</th><th>比现在多卖</th></tr>';
+    return head + R.table.map((r) => {
+      const c = C.tableCells(r, D);
+      return '<tr class="' + (r.mine ? 'mine ' : '') + (r.over || r.qs == null ? 'over' : '') + '"><td>' + esc(c[0]) + '</td><td>' + c[1] + '</td><td>' + c[2] + '</td><td>' + c[3] + '</td><td>' + c[4] + '</td></tr>';
+    }).join('');
+  }
+
+  /* 拆账条：现在利润 → 三块 → 改价后利润（瀑布） */
+  function bridgeParts(R) {
+    const D = R.D;
+    return [
+      { t: '现在', v: R.p0, base: true },
+      { t: '老件按新价', v: R.priceEff },
+      { t: D.Q1 >= D.Q0 ? '多卖的件' : '少卖的件', v: R.volEff },
+      { t: '额外花的', v: -D.F },
+      { t: '改价后', v: R.p1, base: true },
+    ];
+  }
+  /* 图上放不下时改用 万 / 亿（只用于图上标签，表格和文字仍是精确到分） */
+  function short(c) {
+    const y = c / 100;
+    if (y >= 1e8) return (Math.round(y / 1e6) / 100).toLocaleString('en-US') + '亿';
+    if (y >= 1e4) return (Math.round(y / 100) / 100).toLocaleString('en-US') + '万';
+    return yuan(c);
+  }
+  function drawBridge(g, R, W, H, fs) {
+    const parts = bridgeParts(R);
+    let run = 0; const segs = parts.map((p) => {
+      if (p.base) { run = p.v; return { p, a: 0, b: p.v }; }
+      const a = run; run += p.v; return { p, a, b: run };
+    });
+    const vals = segs.flatMap((s) => [s.a, s.b]).concat([0]);
+    let lo = Math.min(...vals), hi = Math.max(...vals); if (hi === lo) hi = lo + 1;
+    g.font = fs + 'px ' + FF;
+    const top = fs * 2 + 6, bot = H - fs * 2 - 10, n = segs.length, gap = W / n;
+    const yv = (v) => bot - (v - lo) / (hi - lo) * (bot - top);
+    g.fillStyle = '#ffffff'; g.fillRect(0, 0, W, H);
+    g.strokeStyle = '#cfc8b8'; g.lineWidth = 1; g.beginPath(); g.moveTo(0, yv(0)); g.lineTo(W, yv(0)); g.stroke();
+    g.textAlign = 'center';
+    segs.forEach((s, i) => {
+      const x = gap * i + gap * 0.18, w = gap * 0.64;
+      const y1 = yv(Math.max(s.a, s.b)), y2 = yv(Math.min(s.a, s.b));
+      const v = s.p.base ? s.p.v : s.b - s.a;
+      g.fillStyle = s.p.base ? (v >= 0 ? '#6b5a2e' : '#b23a2e') : v >= 0 ? '#2f7d4a' : '#d9642b';
+      g.fillRect(x, y1, w, Math.max(1.5, y2 - y1));
+      if (i < n - 1) { g.strokeStyle = '#9a9284'; g.setLineDash([3, 3]); g.beginPath(); g.moveTo(x + w, yv(s.b)); g.lineTo(gap * (i + 1) + gap * 0.18, yv(s.b)); g.stroke(); g.setLineDash([]); }
+      g.fillStyle = '#24221e'; g.textBaseline = 'bottom';
+      const sg = s.p.base ? (v < 0 ? '−' : '') : v > 0 ? '+' : v < 0 ? '−' : '';
+      let lab = sg + yuan(Math.abs(v));
+      g.font = 'bold ' + fs + 'px ' + FF;
+      if (g.measureText(lab).width > gap - 4) lab = sg + short(Math.abs(v));
+      const lw = g.measureText(lab).width;
+      if (lw > gap - 4) g.font = 'bold ' + Math.max(9, Math.floor(fs * (gap - 4) / lw)) + 'px ' + FF;
+      g.fillText(lab, x + w / 2, y1 - 3);
+      g.font = fs + 'px ' + FF; g.textBaseline = 'top'; g.fillStyle = '#5f5a50';
+      let tl = s.p.t; while (tl.length > 1 && g.measureText(tl).width > gap - 2) tl = tl.slice(0, -1);
+      g.fillText(tl, x + w / 2, bot + 6);
+    });
+    g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+  }
+  function renderBridge(R) {
+    const cv = $('bridge'), dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawBridge(g, R, W, H, W < 500 ? 11 : 13);
+  }
+  function sugList(sg) {
+    $('sugCard').style.display = sg.length ? '' : 'none';
+    $('sugs').innerHTML = sg.map((s, k) => '<div class="sug"><span>' + esc(s.text) + '</span><button class="ghost" data-sug="' + s.id + '" data-k="' + k + '">代回</button></div>').join('');
+    [].forEach.call($('sugs').querySelectorAll('button'), (b) => b.addEventListener('click', () => { state = copy(sg[+b.dataset.k].apply); fill(); run(); }));
+  }
+
+  function run() {
+    KEYS.forEach((k) => $(k).classList.remove('bad'));
+    $('error').style.display = 'none';
+    try {
+      const R = C.calculate(state);
+      const sg = C.suggestions(state, R);
+      $('out').style.display = '';
+      $('stamp').textContent = R.stamp; $('stamp').className = 'stamp ' + R.verdict;
+      $('big').innerHTML = bigText(R);
+      $('sumTxt').textContent = R.summary;
+      $('facts').innerHTML = R.facts.map((f) => '<li>' + esc(f) + '</li>').join('');
+      $('vs').innerHTML = vsRows(R);
+      $('ladder').innerHTML = ladderRows(R);
+      last = { r: R, sg };
+      renderBridge(R); sugList(sg);
+    } catch (e) {
+      last = null;
+      if (e.field) { const el = $(e.field); if (el) el.classList.add('bad'); }
+      $('error').textContent = '算不了：' + e.message; $('error').style.display = 'block';
+      $('out').style.display = 'none';
+    }
+    save();
+  }
+
+  /* ── 导出 ── */
+  function stamp() { const d = new Date(), z = (n) => String(n).padStart(2, '0'); return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate()) + ' ' + z(d.getHours()) + ':' + z(d.getMinutes()); }
+  function download(name, blob) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000); }
+  function fit(g, t, w) { let s = String(t); if (g.measureText(s).width <= w) return s; while (s.length > 1 && g.measureText(s + '…').width > w) s = s.slice(0, -1); return s + '…'; }
+  function wrap(g, t, w) {
+    const NOHEAD = '，。、；：！？）」』”%·→｜';
+    const out = []; let line = [];
+    const toks = String(t).match(/[−+-]?[0-9][0-9.,]*(\s?(元|件|%))?|[A-Za-z_][A-Za-z0-9_.\-]*|[\s\S]/g) || [];
+    const width = (a) => g.measureText(a.join('')).width;
+    for (const tk of toks) {
+      if (line.length && width(line.concat([tk])) > w) {
+        let carry = [tk];
+        while (line.length > 1 && (NOHEAD.indexOf(carry[0][0]) >= 0 || '（「『“'.indexOf(line[line.length - 1]) >= 0)) carry.unshift(line.pop());
+        out.push(line.join(''));
+        line = carry; if (/^\s+$/.test(line[0])) line.shift();
+      } else line.push(tk);
+    }
+    if (line.length) out.push(line.join('')); return out;
+  }
+  function drawPNG(Lx) {
+    const R = Lx.r, D = R.D;
+    const Wd = 1080, H = 1350, X = 64, TW = 952;
+    const cv = document.createElement('canvas'); cv.width = Wd; cv.height = H;
+    const g = cv.getContext('2d');
+    g.fillStyle = '#f6f3ec'; g.fillRect(0, 0, Wd, H);
+    g.fillStyle = '#ffffff'; g.fillRect(32, 32, Wd - 64, H - 64);
+    g.fillStyle = '#7d776b'; g.font = '22px ' + FF;
+    g.fillText(fit(g, NAME + (D.name ? ' · ' + D.name : ''), TW - 260), X, 88);
+    g.save(); g.translate(X + TW - 110, 76); g.rotate(-0.05);
+    const col = R.verdict === 'gain' || R.verdict === 'even' ? '#2f7d4a' : R.verdict === 'less' ? '#b8661a' : '#b23a2e';
+    g.strokeStyle = g.fillStyle = col; g.lineWidth = 4; g.font = 'bold 28px ' + FF;
+    const sw = Math.max(130, g.measureText(R.stamp).width + 36);
+    g.strokeRect(-sw / 2, -28, sw, 50); g.textAlign = 'center'; g.fillText(R.stamp, 0, 8); g.restore();
+    g.fillStyle = '#24221e'; g.font = 'bold 46px ' + FF;
+    g.fillText(fit(g, plain(bigText(R)), TW), X, 160);
+    let y = 210;
+    g.font = '25px ' + FF; g.fillStyle = '#24221e';
+    wrap(g, R.summary, TW).slice(0, 3).forEach((l) => { g.fillText(l, X, y); y += 36; });
+    y += 18;
+    /* 对照表（固定右对齐列） */
+    const m0 = C.toCents(R.m0), m1 = C.toCents(R.m1);
+    const rows = [['售价', yuan(D.P0), yuan(D.P1)], ['每件剩', yuanM(R.m0), yuanM(R.m1)], ['每月件数', fmtInt(D.Q0), fmtInt(D.Q1)], ['额外花的钱', '0', D.F ? '−' + yuan(D.F) : '0'], ['每月利润', yuan(R.p0), yuan(R.p1)]];
+    const CX = [X, X + 470, X + 720, X + TW];
+    g.font = '19px ' + FF; g.fillStyle = '#7d776b'; g.textAlign = 'right';
+    g.fillText('现在', CX[1], y); g.fillText('改价后', CX[2], y); g.fillText('差', CX[3], y); g.textAlign = 'left';
+    y += 12; g.strokeStyle = '#ded8cb'; g.lineWidth = 1; g.beginPath(); g.moveTo(X, y); g.lineTo(X + TW, y); g.stroke();
+    const diffs = [signed(D.P1 - D.P0), signed(m1 - m0), (D.Q1 >= D.Q0 ? '+' : '−') + fmtInt(Math.abs(D.Q1 - D.Q0)), D.F ? '−' + yuan(D.F) : '', signed(R.dP)];
+    rows.forEach((r, i) => {
+      y += 42; const tot = i === rows.length - 1;
+      g.font = (tot ? 'bold ' : '') + '26px ' + FF; g.fillStyle = '#5f5a50'; g.fillText(r[0], X, y - 10);
+      g.fillStyle = '#24221e'; g.textAlign = 'right'; g.fillText(r[1], CX[1], y - 10); g.fillText(r[2], CX[2], y - 10);
+      g.fillStyle = tot ? (R.dP < 0 ? '#b23a2e' : '#2f7d4a') : '#24221e'; g.fillText(diffs[i], CX[3], y - 10); g.textAlign = 'left';
+    });
+    y += 26;
+    g.save(); g.translate(X, y); drawBridge(g, R, TW, 300, 20); g.restore();
+    y += 300 + 40;
+    g.font = '21px ' + FF; g.fillStyle = '#24221e';
+    for (const f of R.facts) { const ls = wrap(g, '· ' + f, TW); if (y + ls.length * 30 > H - 200) break; ls.forEach((l) => { g.fillText(l, X, y); y += 30; }); y += 3; }
+    y += 6;
+    for (const s of Lx.sg) { const ls = wrap(g, '· 改一样：' + s.text, TW); if (y + ls.length * 30 > H - 100) break; ls.forEach((l) => { g.fillText(l, X, y); y += 30; }); y += 3; }
+    g.fillStyle = '#7d776b'; g.font = '18px ' + FF;
+    ['件数是使用者自己的估计；没算品牌、复购和同行跟价的影响；房租工资等固定开支两边抵掉。', '默认数据为虚构示例。'].forEach((l, i) => g.fillText(l, X, H - 74 + i * 27));
+    return Promise.resolve(cv);
+  }
+  function backup() {
+    const R = last.r, D = R.D;
+    return { app: NAME, version: 1, savedAt: stamp(), input: copy(state), result: { verdict: R.verdict, stamp: R.stamp, summary: R.summary,
+      profitNow: R.p0 / 100, profitNew: R.p1 / 100, profitDiff: R.dP / 100, breakEvenQty: R.qs, unitNow: C.toCents(R.m0) / 100, unitNew: C.toCents(R.m1) / 100,
+      bridge: { oldUnitsAtNewPrice: R.priceEff / 100, extraUnits: R.volEff / 100, extraSpend: -D.F / 100 },
+      ladder: R.table.map((r) => ({ label: r.label, price: r.price / 100, breakEvenQty: r.qs, overCap: r.over, mine: r.mine })) } };
+  }
+  function init() {
+    let dt = null;
+    KEYS.forEach((k) => { const el = $(k); el.addEventListener('input', () => { state[k] = el.value; save(); clearTimeout(dt); dt = setTimeout(run, 200); }); });
+    PRESETS.forEach((p) => {
+      const b = document.createElement('button'); b.className = 'ghost'; b.textContent = p[0];
+      b.addEventListener('click', () => { state = copy(p[1]); fill(); run(); });
+      $('presets').appendChild(b);
+    });
+    $('reset').addEventListener('click', () => { state = copy(DEFAULT); fill(); run(); });
+    $('dlCSV').addEventListener('click', () => { if (last) download(NAME + '.csv', new Blob(['\ufeff' + C.toCSV(last.r, stamp())], { type: 'text/csv;charset=utf-8' })); });
+    $('dlMD').addEventListener('click', () => { if (last) download(NAME + '.md', new Blob([C.toMD(last.r, stamp(), last.sg)], { type: 'text/markdown;charset=utf-8' })); });
+    $('dlJSON').addEventListener('click', () => { if (last) download(NAME + '-备份.json', new Blob([JSON.stringify(backup(), null, 2)], { type: 'application/json' })); });
+    $('dlPNG').addEventListener('click', () => { if (last) drawPNG(last).then((cv2) => cv2.toBlob((b) => download(NAME + '-1080x1350.png', b), 'image/png')); });
+    let rt = null; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { if (last) renderBridge(last.r); }, 150); });
+    state = load() || copy(DEFAULT);
+    fill(); run();
+    window.__ex = { last: () => last, state: () => state, presets: PRESETS, DEFAULT, drawPNG, backup, bigPlain: () => plain(bigText(last.r)) };
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
+})();
+
+  </script>
+</body>
+</html>
